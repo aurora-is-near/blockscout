@@ -609,7 +609,7 @@ defmodule BlockScoutWeb.API.RPC.ContractControllerTest do
       params = %{
         "module" => "contract",
         "action" => "verify_via_sourcify",
-        "addressHash" => "0x18d89c12e9463be6343c35c9990361ba4c42afc2"
+        "addressHash" => "0x18d89C12e9463Be6343c35C9990361bA4C42AfC2"
       }
 
       response =
@@ -617,6 +617,7 @@ defmodule BlockScoutWeb.API.RPC.ContractControllerTest do
         |> get("/api", params)
         |> json_response(200)
 
+      assert response["message"] == "OK"
       assert response["status"] == "1"
 
       assert response["result"]["ABI"] ==
@@ -626,14 +627,13 @@ defmodule BlockScoutWeb.API.RPC.ContractControllerTest do
       assert response["result"]["ContractName"] == "Storage"
       assert response["result"]["EVMVersion"] == "istanbul"
       assert response["result"]["OptimizationUsed"] == "false"
-      assert response["message"] == "OK"
     end
 
     test "verify already verified contract", %{conn: conn} do
       params = %{
         "module" => "contract",
         "action" => "verify_via_sourcify",
-        "addressHash" => "0x18d89c12e9463be6343c35c9990361ba4c42afc2"
+        "addressHash" => "0x18d89C12e9463Be6343c35C9990361bA4C42AfC2"
       }
 
       response =
