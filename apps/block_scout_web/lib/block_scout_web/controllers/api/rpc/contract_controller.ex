@@ -45,7 +45,13 @@ defmodule BlockScoutWeb.API.RPC.ContractController do
     end
   end
 
-  def verify_via_sourcify(conn, %{"addressHash" => address_hash, "files" => files}) do
+  def verify_via_sourcify(conn, %{"addressHash" => address_hash} = input) do
+    if Map.has_key?(input, "files") do
+      files = input["files"]
+    else
+      files = []
+    end
+
     if Chain.smart_contract_verified?(address_hash) do
       render(conn, :error, error: "Smart-contract already verified.")
     else

@@ -605,6 +605,47 @@ defmodule BlockScoutWeb.API.RPC.ContractControllerTest do
   end
 
   describe "verify" do
+    test "verify known on sourcify repo contract", %{conn: conn} do
+      params = %{
+        "module" => "contract",
+        "action" => "verify_via_sourcify",
+        "addressHash" => "0x18d89c12e9463be6343c35c9990361ba4c42afc2"
+      }
+
+      response =
+        conn
+        |> get("/api", params)
+        |> json_response(200)
+
+      assert response["status"] == "1"
+
+      assert response["result"]["ABI"] ==
+               "[{\"inputs\":[],\"name\":\"retrieve\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_number\",\"type\":\"uint256\"}],\"name\":\"store\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}]"
+
+      assert response["result"]["CompilerVersion"] == "v0.7.6+commit.7338295f"
+      assert response["result"]["ContractName"] == "Storage"
+      assert response["result"]["EVMVersion"] == "istanbul"
+      assert response["result"]["OptimizationUsed"] == "false"
+      assert response["message"] == "OK"
+    end
+
+    test "verify already verified contract", %{conn: conn} do
+      params = %{
+        "module" => "contract",
+        "action" => "verify_via_sourcify",
+        "addressHash" => "0x18d89c12e9463be6343c35c9990361ba4c42afc2"
+      }
+
+      response =
+        conn
+        |> get("/api", params)
+        |> json_response(200)
+
+      assert response["message"] == "Smart-contract already verified."
+      assert response["status"] == "0"
+      assert response["result"] == nil
+    end
+
     # flaky test
     # test "with an address that doesn't exist", %{conn: conn} do
     #   contract_code_info = Factory.contract_code_info()
