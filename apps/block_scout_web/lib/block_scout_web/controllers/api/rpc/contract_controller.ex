@@ -46,10 +46,10 @@ defmodule BlockScoutWeb.API.RPC.ContractController do
   end
 
   def verify_via_sourcify(conn, %{"addressHash" => address_hash} = input) do
-    if Map.has_key?(input, "files") do
-      files = input["files"]
+    files = if Map.has_key?(input, "files") do
+      input["files"]
     else
-      files = []
+      []
     end
 
     if Chain.smart_contract_verified?(address_hash) do
