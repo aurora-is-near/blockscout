@@ -25,8 +25,10 @@
               <%= link to: blocks_path(@conn, :index), class: "dropdown-item #{tab_status("blocks", @conn.request_path)}" do %>
                 <%= gettext("Blocks") %>
               <% end %>
-              <%= link to: uncle_path(@conn, :uncle), class: "dropdown-item #{tab_status("uncles", @conn.request_path)}" do %>
-                <%= gettext("Uncles") %>
+              <%= unless System.get_env("HIDE_UNCLES")  do %>
+                <%= link to: uncle_path(@conn, :uncle), class: "dropdown-item #{tab_status("uncles", @conn.request_path)}" do %>
+                  <%= gettext("Uncles") %>
+                <% end %>
               <% end %>
               <%= link to: reorg_path(@conn, :reorg), class: "dropdown-item #{tab_status("reorgs", @conn.request_path)}" do %>
                 <%= gettext("Forked Blocks (Reorgs)") %>
@@ -66,7 +68,7 @@
                 </span>
                 <%= gettext("Tokens") %>
               </a>
-              <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown"> 
+              <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown">
                 <%= link(
                       gettext("All"),
                       class: "dropdown-item #{tab_status("tokens", @conn.request_path)}",
@@ -98,7 +100,7 @@
                 </span>
                 <%= gettext("Tokens") %>
               </a>
-              <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown"> 
+              <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown">
                 <%= link(
                       gettext("All"),
                       class: "dropdown-item #{tab_status("tokens", @conn.request_path)}",
@@ -121,7 +123,7 @@
               </span>
               <%= gettext("APIs") %>
             </a>
-            <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown"> 
+            <div class="dropdown-menu" aria-labeledby="navbarTransactionsDropdown">
               <%= link(
                     gettext("GraphQL"),
                     class: "dropdown-item #{tab_status("graphiql", @conn.request_path)}",
@@ -160,7 +162,7 @@
                 </a>
               <% end %>
               <%= if apps_menu == true do %>
-                <%= for %{url: url, title: title} <- external_apps_list() do %> 
+                <%= for %{url: url, title: title} <- external_apps_list() do %>
                     <a href="<%= url %>" class="dropdown-item" target="_blank"><%= title %>
                       <span class="external-link-icon">
                         <%= render BlockScoutWeb.IconsView, "_external_link.html" %>
@@ -178,19 +180,19 @@
             </span>
             <%= subnetwork_title() %>
           </a>
-          <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">  
-            <a class="dropdown-item header division">Mainnets</a> 
-            <%= for %{url: url, title: title} <- dropdown_head_main_nets() do %>  
+          <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
+            <a class="dropdown-item header division">Mainnets</a>
+            <%= for %{url: url, title: title} <- dropdown_head_main_nets() do %>
               <a class="dropdown-item" href="<%= url %>"><%= title %></a>
-            <% end %> 
-            <a class="dropdown-item header division">Testnets</a> 
-            <%= for %{url: url, title: title} <- test_nets(dropdown_nets()) do %> 
+            <% end %>
+            <a class="dropdown-item header division">Testnets</a>
+            <%= for %{url: url, title: title} <- test_nets(dropdown_nets()) do %>
               <a class="dropdown-item" href="<%= url %>"><%= title %></a>
-            <% end %> 
-            <a class="dropdown-item header division">Other Networks</a> 
-            <%= for %{url: url, title: title} <- dropdown_other_nets() do %>  
+            <% end %>
+            <a class="dropdown-item header division">Other Networks</a>
+            <%= for %{url: url, title: title} <- dropdown_other_nets() do %>
               <a class="dropdown-item" href="<%= url %>"><%= title %></a>
-            <% end %> 
+            <% end %>
           </div>
         </li>
       </ul>
