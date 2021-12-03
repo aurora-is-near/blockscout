@@ -400,6 +400,8 @@ defmodule EthereumJSONRPC do
     end
   end
 
+  def quantity_to_integer(integer) when is_nil(integer), do: DateTime.to_unix(DateTime.utc_now)
+
   @doc """
   Converts `t:non_neg_integer/0` to `t:quantity/0`
   """
