@@ -4154,8 +4154,9 @@ defmodule Explorer.Chain do
   Finds metadata for verification of a contract from verified twins: contracts with the same bytecode
   which were verified previously, returns a single t:SmartContract.t/0
   """
-  def get_address_verified_twin_contract(address_hash) do
+  def get_address_verified_twin_contract(_) do
     %{:verified_contract => nil, :additional_sources => nil}
+  # def get_address_verified_twin_contract(address_hash) do
     # case Repo.get(Address, address_hash) do
     #   nil ->
     #     %{:verified_contract => nil, :additional_sources => nil}
@@ -4245,20 +4246,20 @@ defmodule Explorer.Chain do
     end
   end
 
-  defp get_contract_additional_sources(verified_contract_twin) do
-    if verified_contract_twin do
-      verified_contract_twin_additional_sources_query =
-        from(
-          s in SmartContractAdditionalSource,
-          where: s.address_hash == ^verified_contract_twin.address_hash
-        )
-
-      verified_contract_twin_additional_sources_query
-      |> Repo.all()
-    else
-      []
-    end
-  end
+  # defp get_contract_additional_sources(verified_contract_twin) do
+  #   if verified_contract_twin do
+  #     verified_contract_twin_additional_sources_query =
+  #       from(
+  #         s in SmartContractAdditionalSource,
+  #         where: s.address_hash == ^verified_contract_twin.address_hash
+  #       )
+  #
+  #     verified_contract_twin_additional_sources_query
+  #     |> Repo.all()
+  #   else
+  #     []
+  #   end
+  # end
 
   @spec address_hash_to_smart_contract(Hash.Address.t()) :: SmartContract.t() | nil
   def address_hash_to_smart_contract(address_hash) do
