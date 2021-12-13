@@ -10,6 +10,7 @@ defmodule Explorer.Chain do
       join: 5,
       limit: 2,
       lock: 2,
+      offset: 2,
       order_by: 2,
       order_by: 3,
       preload: 2,
@@ -549,6 +550,29 @@ defmodule Explorer.Chain do
     |> Repo.all()
   end
 
+  @doc """
+  address_hash_to_token_transfers_including_contract/2 function returns token transfers on address (to/from/contract).
+  It is used by CSV export of token transfers button.
+  """
+  @spec address_hash_to_token_transfers_including_contract(Hash.Address.t(), Keyword.t()) :: [TokenTransfer.t()]
+  def address_hash_to_token_transfers_including_contract(address_hash, options \\ []) do
+    paging_options = Keyword.get(options, :paging_options, @default_paging_options)
+
+    query =
+      from(
+        token_transfer in TokenTransfer,
+        where: token_transfer.to_address_hash == ^address_hash,
+        or_where: token_transfer.from_address_hash == ^address_hash,
+        or_where: token_transfer.token_contract_address_hash == ^address_hash
+      )
+
+    query
+    |> handle_paging_options(paging_options)
+    |> preload(transaction: :block)
+    |> preload(:token)
+    |> Repo.all()
+  end
+
   @spec address_to_logs(Hash.Address.t(), Keyword.t()) :: [Log.t()]
   def address_to_logs(address_hash, options \\ []) when is_list(options) do
     paging_options = Keyword.get(options, :paging_options) || %PagingOptions{page_size: 50}
@@ -844,7 +868,7 @@ defmodule Explorer.Chain do
     Repo.aggregate(to_address_query, :count, :hash, timeout: :infinity)
   end
 
-  @spec address_to_incoming_transaction_gas_usage(Hash.Address.t()) :: non_neg_integer()
+  @spec address_to_incoming_transaction_gas_usage(Hash.Address.t()) :: Decimal.t() | nil
   def address_to_incoming_transaction_gas_usage(address_hash) do
     to_address_query =
       from(
@@ -855,7 +879,7 @@ defmodule Explorer.Chain do
     Repo.aggregate(to_address_query, :sum, :gas_used, timeout: :infinity)
   end
 
-  @spec address_to_outcoming_transaction_gas_usage(Hash.Address.t()) :: non_neg_integer()
+  @spec address_to_outcoming_transaction_gas_usage(Hash.Address.t()) :: Decimal.t() | nil
   def address_to_outcoming_transaction_gas_usage(address_hash) do
     to_address_query =
       from(
@@ -2282,7 +2306,7 @@ defmodule Explorer.Chain do
     fetch_top_tokens(filter, paging_options)
   end
 
-  @spec list_top_bridged_tokens(atom(), String.t(), [paging_options | necessity_by_association_option]) :: [
+  @spec list_top_bridged_tokens(atom(), String.t() | nil, [paging_options | necessity_by_association_option]) :: [
           {Token.t(), non_neg_integer()}
         ]
   def list_top_bridged_tokens(destination, filter, options \\ []) do
@@ -2317,47 +2341,62 @@ defmodule Explorer.Chain do
   end
 
   defp fetch_top_bridged_tokens(destination, paging_options, filter) do
+    offset = (max(paging_options.page_number, 1) - 1) * paging_options.page_size
     chain_id = translate_destination_to_chain_id(destination)
 
-    bridged_tokens_query =
-      from(bt in BridgedToken,
-        select: bt,
-        where: bt.foreign_chain_id == ^chain_id
-      )
+    if chain_id == :undefined do
+      []
+    else
+      bridged_tokens_query =
+        if chain_id do
+          from(bt in BridgedToken,
+            select: bt,
+            where: bt.foreign_chain_id == ^chain_id
+          )
+        else
+          from(bt in BridgedToken,
+            select: bt
+          )
+        end
 
-    base_query =
-      from(t in Token,
-        right_join: bt in subquery(bridged_tokens_query),
-        on: t.contract_address_hash == bt.home_token_contract_address_hash,
-        where: t.total_supply > ^0,
-        where: t.bridged,
-        order_by: [desc: t.holder_count, asc: t.name],
-        select: [t, bt],
-        preload: [:contract_address]
-      )
+      base_query =
+        from(t in Token,
+          right_join: bt in subquery(bridged_tokens_query),
+          on: t.contract_address_hash == bt.home_token_contract_address_hash,
+          where: t.total_supply > ^0,
+          where: t.bridged,
+          order_by: [desc: t.holder_count, asc: t.name],
+          select: [t, bt],
+          preload: [:contract_address]
+        )
 
-    base_query_with_paging =
-      base_query
-      |> page_tokens(paging_options)
-      |> limit(^paging_options.page_size)
+      base_query_with_paging =
+        base_query
+        |> page_tokens(paging_options)
+        |> limit(^paging_options.page_size)
+        |> offset(^offset)
 
-    query =
-      if filter && filter !== "" do
-        base_query_with_paging
-        |> where(fragment("to_tsvector('english', symbol || ' ' || name ) @@ to_tsquery(?)", ^filter))
-      else
-        base_query_with_paging
-      end
+      query =
+        if filter && filter !== "" do
+          base_query_with_paging
+          |> where(fragment("to_tsvector('english', symbol || ' ' || name ) @@ to_tsquery(?)", ^filter))
+        else
+          base_query_with_paging
+        end
 
-    query
-    |> Repo.all()
+      query
+      |> Repo.all()
+    end
   end
 
   defp translate_destination_to_chain_id(destination) do
     case destination do
       :eth -> 1
+      :kovan -> 42
       :bsc -> 56
-      _ -> 1
+      :poa -> 99
+      nil -> nil
+      _ -> :undefined
     end
   end
 
@@ -2504,15 +2543,20 @@ defmodule Explorer.Chain do
     Repo.aggregate(query, :count, timeout: :infinity)
   end
 
-  @spec address_to_gas_usage_count(Address.t()) :: non_neg_integer()
+  @spec address_to_gas_usage_count(Address.t()) :: Decimal.t() | nil
   def address_to_gas_usage_count(address) do
     if contract?(address) do
       incoming_transaction_gas_usage = address_to_incoming_transaction_gas_usage(address.hash)
 
-      if incoming_transaction_gas_usage == 0 do
-        address_to_outcoming_transaction_gas_usage(address.hash)
-      else
-        incoming_transaction_gas_usage
+      cond do
+        !incoming_transaction_gas_usage ->
+          address_to_outcoming_transaction_gas_usage(address.hash)
+
+        Decimal.cmp(incoming_transaction_gas_usage, 0) == :eq ->
+          address_to_outcoming_transaction_gas_usage(address.hash)
+
+        true ->
+          incoming_transaction_gas_usage
       end
     else
       address_to_outcoming_transaction_gas_usage(address.hash)
