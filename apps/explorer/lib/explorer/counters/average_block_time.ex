@@ -64,6 +64,7 @@ defmodule Explorer.Counters.AverageBlockTime do
   defp refresh_timestamps do
     base_query =
       from(block in Block,
+        where: (block.timestamp != ^"1970-01-01 00:00:00"),
         limit: 100,
         offset: 100,
         order_by: [desc: block.number],

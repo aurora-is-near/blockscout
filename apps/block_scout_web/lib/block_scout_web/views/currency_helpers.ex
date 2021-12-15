@@ -69,8 +69,8 @@ defmodule BlockScoutWeb.CurrencyHelpers do
 
   @spec format_according_to_decimals(Decimal.t(), Decimal.t()) :: String.t()
   def format_according_to_decimals(value, decimals) do
-    if Decimal.cmp(decimals, 18) == :gt do
-      format_according_to_decimals(value, Decimal.new(18))
+    if Decimal.cmp(decimals, 24) == :gt do
+      format_according_to_decimals(value, Decimal.new(24))
     else
       value
       |> divide_decimals(decimals)
