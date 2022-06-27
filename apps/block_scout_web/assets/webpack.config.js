@@ -36,7 +36,6 @@ const appJs =
   {
     entry: {
       'app': './js/app.js',
-      'stakes': './js/pages/stakes.js',
       'chart-loader': './js/chart-loader.js',
       'balance-chart-loader': './js/balance-chart-loader.js',
       'chain': './js/pages/chain.js',
@@ -63,7 +62,6 @@ const appJs =
       'async-listing-load': './js/lib/async_listing_load',
       'non-critical': './css/non-critical.scss',
       'main-page': './css/main-page.scss',
-      'staking': './css/stakes.scss',
       'tokens': './js/pages/token/search.js',
       'text-ad': './js/lib/text_ad.js',
       'banner': './js/lib/banner.js',
@@ -94,7 +92,10 @@ const appJs =
           test: /\.scss$/,
           use: [
             {
-              loader: MiniCssExtractPlugin.loader
+              loader: MiniCssExtractPlugin.loader,
+              options: {
+                esModule: false,
+              },
             }, {
               loader: 'css-loader'
             }, {
@@ -121,6 +122,11 @@ const appJs =
               outputPath: '../fonts/',
               publicPath: '../fonts/'
             }
+          }
+        }, {
+          test: /\.(png)$/,
+          use: {
+            loader: 'file-loader'
           }
         }
       ]
