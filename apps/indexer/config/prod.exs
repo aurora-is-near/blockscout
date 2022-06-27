@@ -1,4 +1,4 @@
-use Mix.Config
+import Config
 
 config :indexer, Indexer.Tracer, env: "production", disabled?: true
 
@@ -35,6 +35,12 @@ config :logger, :empty_blocks_to_refetch,
   level: :info,
   path: Path.absname("logs/prod/indexer/empty_blocks_to_refetch.log"),
   metadata_filter: [fetcher: :empty_blocks_to_refetch],
+  rotate: %{max_bytes: 52_428_800, keep: 19}
+
+config :logger, :block_import_timings,
+  level: :debug,
+  path: Path.absname("logs/prod/indexer/block_import_timings.log"),
+  metadata_filter: [fetcher: :block_import_timings],
   rotate: %{max_bytes: 52_428_800, keep: 19}
 
 variant =
