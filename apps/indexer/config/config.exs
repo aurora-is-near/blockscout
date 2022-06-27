@@ -29,9 +29,7 @@ block_transformer =
 config :indexer,
   block_transformer: block_transformer,
   ecto_repos: [Explorer.Repo],
-  metadata_updater_seconds_interval:
-    String.to_integer(System.get_env("TOKEN_METADATA_UPDATE_INTERVAL") || "#{2 * 24 * 60 * 60}"),
-  memory_limit: 10 <<< 30,
+  metadata_updater_seconds_interval: String.to_integer(System.get_env("TOKEN_METADATA_UPDATE_INTERVAL") || "#{2 * 24 * 60 * 60}"),
   first_block: System.get_env("FIRST_BLOCK") || "",
   last_block: System.get_env("LAST_BLOCK") || "",
   trace_first_block: System.get_env("TRACE_FIRST_BLOCK") || "",
