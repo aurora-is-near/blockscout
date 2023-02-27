@@ -68,7 +68,8 @@ config :block_scout_web, BlockScoutWeb.Chain,
   show_maintenance_alert: System.get_env("SHOW_MAINTENANCE_ALERT", "false") == "true",
   enable_testnet_label: System.get_env("SHOW_TESTNET_LABEL", "false") == "true",
   testnet_label_text: System.get_env("TESTNET_LABEL_TEXT", "Testnet"),
-  aurora_token_contract_address: System.get_env("AURORA_TOKEN_CONTRACT_ADDRESS")
+  aurora_token_contract_address: System.get_env("AURORA_TOKEN_CONTRACT_ADDRESS"),
+  show_index_progress: System.get_env("SHOW_INDEX_PROGRESS", "false") == "true"
 
 verification_max_libraries_default = 10
 
