@@ -368,15 +368,6 @@
               <% end %>
             </dd>
           </dl>
-          <!-- Gas Price -->
-          <dl class="row">
-            <dt class="col-sm-3 col-lg-2 text-muted">
-              <%= render BlockScoutWeb.CommonComponentsView, "_i_tooltip_2.html",
-                text: gettext("Price per unit of gas specified by the sender. Higher gas prices can prioritize transaction inclusion during times of high usage.") %>
-              <%= gettext "Gas Price" %>
-            </dt>
-            <dd class="col-sm-9 col-lg-10"> <%= gas_price(@transaction, :gwei) %> </dd>
-          </dl>
           <%= if !is_nil(type) do %>
             <dl class="row">
               <dt class="col-sm-3 col-lg-2 text-muted">
@@ -397,36 +388,6 @@
             </dt>
             <dd class="col-sm-9 col-lg-10"> <%= format_gas_limit(@transaction.gas) %> </dd>
           </dl>
-          <%= if !is_nil(max_fee_per_gas) do %>
-            <dl class="row">
-              <dt class="col-sm-3 col-lg-2 text-muted">
-                <%= render BlockScoutWeb.CommonComponentsView, "_i_tooltip_2.html",
-                  text: gettext("Maximum total amount per unit of gas a user is willing to pay for a transaction, including base fee and priority fee.") %>
-                <%= gettext "Max Fee per Gas" %>
-              </dt>
-              <dd class="col-sm-9 col-lg-10"> <%= format_wei_value(max_fee_per_gas, :gwei) %> </dd>
-            </dl>
-          <% end %>
-          <%= if !is_nil(max_priority_fee_per_gas) do %>
-            <dl class="row">
-              <dt class="col-sm-3 col-lg-2 text-muted">
-                <%= render BlockScoutWeb.CommonComponentsView, "_i_tooltip_2.html",
-                  text: gettext("User defined maximum fee (tip) per unit of gas paid to validator for transaction prioritization.") %>
-                <%= gettext "Max Priority Fee per Gas" %>
-              </dt>
-              <dd class="col-sm-9 col-lg-10"> <%= format_wei_value(max_priority_fee_per_gas, :gwei) %> </dd>
-            </dl>
-          <% end %>
-          <%= if !is_nil(priority_fee) do %>
-            <dl class="row">
-              <dt class="col-sm-3 col-lg-2 text-muted">
-                <%= render BlockScoutWeb.CommonComponentsView, "_i_tooltip_2.html",
-                  text: gettext("User-defined tip sent to validator for transaction priority/inclusion.") %>
-                <%= gettext "Priority Fee / Tip" %>
-              </dt>
-              <dd class="col-sm-9 col-lg-10"> <%= format_wei_value(priority_fee, :ether) %> </dd>
-            </dl>
-          <% end %>
            <%= if !is_nil(burned_fee) do %>
             <dl class="row">
               <dt class="col-sm-3 col-lg-2 text-muted">
