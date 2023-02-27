@@ -379,15 +379,6 @@
             </dl>
           <% end %>
           <hr>
-          <!-- Gas Limit -->
-          <dl class="row">
-            <dt class="col-sm-3 col-lg-2 text-muted">
-              <%= render BlockScoutWeb.CommonComponentsView, "_i_tooltip_2.html",
-                text: gettext("Maximum gas amount approved for the transaction.") %>
-              <%= gettext "Gas Limit" %>
-            </dt>
-            <dd class="col-sm-9 col-lg-10"> <%= format_gas_limit(@transaction.gas) %> </dd>
-          </dl>
            <%= if !is_nil(burned_fee) do %>
             <dl class="row">
               <dt class="col-sm-3 col-lg-2 text-muted">
