@@ -8,12 +8,22 @@ $dashboard-banner-network-plain-container-background-color: #111821;
 .layout-container {
   .dashboard-banner-container {
     background-image: none;
+    background-color: #171E28;
+  }
+
+  .dashboard-banner-network-plain-container,
+  .dashboard-banner-network-plain-container::after {
+    background-color: #F6F7F9;
+  }
+
+  .dashboard-banner-network-stats-value {
+    color: #101820;
   }
 }
 
 .dashboard-banner-container {
   .dashboard-banner-network-stats-label {
-    color: #8a8e93;
+    color: #2DA72A;
   }
 }
 
@@ -126,6 +136,10 @@ body.dark-theme-applied {
 
     main {
       background-color: #101820;
+    }
+
+    .dashboard-banner-network-stats-value {
+      color: #fff;
     }
   }
 
