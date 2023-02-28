@@ -172,4 +172,40 @@ body.dark-theme-applied {
   .footer {
     background-color: #171E28;
   }
+
+  .dashboard-banner-chart-legend .dashboard-banner-chart-legend-label,
+  .dashboard-banner-network-stats-label {
+    color: #A3F5A2;
+  }
+
+  .navbar.navbar-primary .navbar-nav .nav-link {
+    color: #A3F5A2;
+  }
+
+  .navbar.navbar-primary .navbar-nav .nav-link.active:before,
+  .navbar.navbar-primary .navbar-nav .nav-link:hover:before {
+    background-color: #5DEB5A;
+  }
+
+  .navbar.navbar-primary .navbar-nav .nav-link.active .nav-link-icon svg path,
+  .navbar.navbar-primary .navbar-nav .nav-link:hover .nav-link-icon svg path {
+    fill: #5DEB5A;
+  }
+
+  .navbar.navbar-primary .form-control {
+    background-color: #1B2729 !important;
+    border-color: #1B2729 !important;
+  }
+
+  .main-search-autocomplete {
+    background-color: #1B2729 !important;
+  }
+
+  ul[id^=autoComplete_list_] {
+    background-color: #1D3029 !important;
+  }
+
+  .dark-mode-changer--dark svg path {
+    fill: #5DEB5A;
+  }
 }
