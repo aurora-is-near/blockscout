@@ -71,8 +71,7 @@ config :block_scout_web, BlockScoutWeb.Chain,
   show_maintenance_alert: ConfigHelper.parse_bool_env_var("SHOW_MAINTENANCE_ALERT"),
   enable_testnet_label: ConfigHelper.parse_bool_env_var("SHOW_TESTNET_LABEL"),
   testnet_label_text: System.get_env("TESTNET_LABEL_TEXT", "Testnet"),
-  aurora_token_contract_address: System.get_env("AURORA_TOKEN_CONTRACT_ADDRESS"),
-  show_index_progress: System.get_env("SHOW_INDEX_PROGRESS", "false") == "true"
+  aurora_token_contract_address: System.get_env("AURORA_TOKEN_CONTRACT_ADDRESS")
 
 config :block_scout_web, :footer,
   logo: System.get_env("FOOTER_LOGO"),
