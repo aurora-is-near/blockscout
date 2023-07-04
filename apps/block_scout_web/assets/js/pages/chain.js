@@ -12,6 +12,7 @@ import { createStore, connectElements } from '../lib/redux_helpers.js'
 import { batchChannel, showLoader } from '../lib/utils'
 import listMorph from '../lib/list_morph'
 import '../app'
+import { openErrorModal, openSuccessModal, openWarningModal } from '../lib/modals'
 
 const BATCH_THRESHOLD = 6
 const BLOCKS_PER_PAGE = 4
@@ -47,6 +48,8 @@ function baseReducer (state = initialState, action) {
       })
     }
     case 'RECEIVED_NEW_BLOCK': {
+      const firstBlock = ($('#indexer-first-block').text() && parseInt($('#indexer-first-block').text(), 10)) || 0
+      const blockCount = (action.msg.blockNumber - firstBlock) + 1
       // @ts-ignore
       if (!state.blocks.length || state.blocks[0].blockNumber < action.msg.blockNumber) {
         let pastBlocks
@@ -62,13 +65,13 @@ function baseReducer (state = initialState, action) {
             action.msg,
             ...pastBlocks
           ],
-          blockCount: action.msg.blockNumber + 1
+          blockCount
         })
       } else {
         return Object.assign({}, state, {
           // @ts-ignore
           blocks: state.blocks.map((block) => block.blockNumber === action.msg.blockNumber ? action.msg : block),
-          blockCount: action.msg.blockNumber + 1
+          blockCount
         })
       }
     }
@@ -416,3 +419,26 @@ function loadBlocks (store) {
 function bindBlockErrorMessage (store) {
   $('[data-selector="chain-block-list"] [data-selector="error-message"]').on('click', _event => loadBlocks(store))
 }
+
+$('a.ajax').on('click', (event) => {
+  event.preventDefault()
+  event.currentTarget.classList.add('disabled')
+
+  $.get($(event.currentTarget).attr('href'), () => {
+    openSuccessModal('Success', 'Email successfully resent', () => { window.location.reload() })
+  }).fail((error) => {
+    if (error.responseJSON && error.responseJSON.message) {
+      if (error.status === 429) {
+        openWarningModal('Warning', error.responseJSON.message)
+      } else {
+        openErrorModal('Error', error.responseJSON.message, false)
+      }
+    } else {
+      openErrorModal('Error', 'Email resend failed', false)
+    }
+  })
+    .always(() => {
+      event.currentTarget.classList.remove('disabled')
+    })
+}
+)

@@ -1,6 +1,6 @@
 import Config
 
-config :indexer, Indexer.Tracer, env: "production", disabled?: true
+config :indexer, Indexer.Tracer, env: "production", disabled?: false
 
 config :logger, :indexer,
   level: :info,
@@ -41,4 +41,10 @@ config :logger, :block_import_timings,
   level: :debug,
   path: Path.absname("logs/prod/indexer/block_import_timings.log"),
   metadata_filter: [fetcher: :block_import_timings],
+  rotate: %{max_bytes: 52_428_800, keep: 19}
+
+config :logger, :withdrawal,
+  level: :info,
+  path: Path.absname("logs/prod/indexer/withdrawal.log"),
+  metadata_filter: [fetcher: :withdrawal],
   rotate: %{max_bytes: 52_428_800, keep: 19}

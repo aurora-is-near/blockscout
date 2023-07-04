@@ -27,6 +27,12 @@ $dashboard-banner-network-plain-container-background-color: #111821;
   }
 }
 
+.navbar-brand {
+  .navbar-logo {
+    max-height: none;
+  }
+}
+
 .dashboard-banner-network-stats-item::before {
   background-color: #5DEB5A !important;
 }

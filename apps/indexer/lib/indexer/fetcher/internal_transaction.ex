@@ -71,9 +71,12 @@ defmodule Indexer.Fetcher.InternalTransaction do
   @impl BufferedTask
   def init(initial, reducer, _json_rpc_named_arguments) do
     {:ok, final} =
-      Chain.stream_blocks_with_unfetched_internal_transactions(initial, fn block_number, acc ->
-        reducer.(block_number, acc)
-      end)
+      Chain.stream_blocks_with_unfetched_internal_transactions(
+        initial,
+        fn block_number, acc ->
+          reducer.(block_number, acc)
+        end
+      )
 
     final
   end
@@ -90,8 +93,15 @@ defmodule Indexer.Fetcher.InternalTransaction do
               tracer: Tracer
             )
   def run(block_numbers, json_rpc_named_arguments) do
-    unique_numbers = Enum.uniq(block_numbers)
-    filtered_unique_numbers = EthereumJSONRPC.block_numbers_in_range(unique_numbers)
+    unique_numbers =
+      block_numbers
+      |> Enum.uniq()
+      |> Chain.filter_consensus_block_numbers()
+
+    filtered_unique_numbers =
+      unique_numbers
+      |> EthereumJSONRPC.block_numbers_in_range()
+      |> drop_genesis(json_rpc_named_arguments)
 
     filtered_unique_numbers_count = Enum.count(filtered_unique_numbers)
     Logger.metadata(count: filtered_unique_numbers_count)
@@ -124,6 +134,8 @@ defmodule Indexer.Fetcher.InternalTransaction do
           error_count: filtered_unique_numbers_count
         )
 
+        handle_not_found_transaction(reason)
+
         # re-queue the de-duped entries
         {:retry, filtered_unique_numbers}
 
@@ -135,11 +147,26 @@ defmodule Indexer.Fetcher.InternalTransaction do
           error_count: filtered_unique_numbers_count
         )
 
+        handle_not_found_transaction(reason)
+
         # re-queue the de-duped entries
         {:retry, filtered_unique_numbers}
 
       :ignore ->
         :ok
+    end
+  end
+
+  defp drop_genesis(block_numbers, json_rpc_named_arguments) do
+    first_block = EthereumJSONRPC.first_block_to_fetch(:trace_first_block)
+
+    if first_block in block_numbers do
+      case EthereumJSONRPC.fetch_blocks_by_numbers([first_block], json_rpc_named_arguments) do
+        {:ok, %{transactions_params: [_ | _]}} -> block_numbers
+        _ -> block_numbers -- [first_block]
+      end
+    else
+      block_numbers
     end
   end
 
@@ -210,7 +237,7 @@ defmodule Indexer.Fetcher.InternalTransaction do
 
     address_hash_to_block_number =
       Enum.into(addresses_params, %{}, fn %{fetched_coin_balance_block_number: block_number, hash: hash} ->
-        {hash, block_number}
+        {String.downcase(hash), block_number}
       end)
 
     empty_block_numbers =
@@ -231,7 +258,7 @@ defmodule Indexer.Fetcher.InternalTransaction do
 
     case imports do
       {:ok, imported} ->
-        Accounts.drop(imported[:addreses])
+        Accounts.drop(imported[:addresses])
         Blocks.drop_nonconsensus(imported[:remove_consensus_of_missing_transactions_blocks])
 
         async_import_coin_balances(imported, %{
@@ -299,12 +326,32 @@ defmodule Indexer.Fetcher.InternalTransaction do
     end)
   end
 
+  defp handle_not_found_transaction(errors) when is_list(errors) do
+    Enum.each(errors, &handle_not_found_transaction/1)
+  end
+
+  defp handle_not_found_transaction(error) do
+    case error do
+      %{data: data, message: "historical backend error" <> _} -> invalidate_block_from_error(data)
+      %{data: data, message: "genesis is not traceable"} -> invalidate_block_from_error(data)
+      %{data: data, message: "transaction not found"} -> invalidate_block_from_error(data)
+      _ -> :ok
+    end
+  end
+
+  defp invalidate_block_from_error(%{"blockNumber" => block_number}),
+    do: BlocksRunner.invalidate_consensus_blocks([block_number])
+
+  defp invalidate_block_from_error(%{block_number: block_number}),
+    do: BlocksRunner.invalidate_consensus_blocks([block_number])
+
+  defp invalidate_block_from_error(_error_data), do: :ok
+
   defp defaults do
     [
       flush_interval: :timer.seconds(3),
       max_concurrency: Application.get_env(:indexer, __MODULE__)[:concurrency] || @default_max_concurrency,
       max_batch_size: Application.get_env(:indexer, __MODULE__)[:batch_size] || @default_max_batch_size,
-      poll: true,
       task_supervisor: Indexer.Fetcher.InternalTransaction.TaskSupervisor,
       metadata: [fetcher: :internal_transaction]
     ]

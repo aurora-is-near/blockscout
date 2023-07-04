@@ -13,12 +13,14 @@ defmodule BlockScoutWeb.ApiRouter do
   Router for API
   """
   use BlockScoutWeb, :router
-  alias BlockScoutWeb.SmartContractsApiV2Router
-  alias BlockScoutWeb.Plug.{CheckAccountAPI, CheckApiV2}
+  alias BlockScoutWeb.{APIKeyV2Router, SmartContractsApiV2Router}
+  alias BlockScoutWeb.Plug.{CheckAccountAPI, CheckApiV2, RateLimit}
 
   forward("/v2/smart-contracts", SmartContractsApiV2Router)
+  forward("/v2/key", APIKeyV2Router)
 
   pipeline :api do
+    plug(BlockScoutWeb.Plug.Logger, application: :api)
     plug(:accepts, ["json"])
   end
 
@@ -29,18 +31,36 @@ defmodule BlockScoutWeb.ApiRouter do
   end
 
   pipeline :api_v2 do
+    plug(BlockScoutWeb.Plug.Logger, application: :api_v2)
+    plug(:accepts, ["json"])
     plug(CheckApiV2)
     plug(:fetch_session)
     plug(:protect_from_forgery)
+    plug(RateLimit)
   end
 
-  alias BlockScoutWeb.Account.Api.V1.{TagsController, UserController}
+  pipeline :api_v2_no_session do
+    plug(BlockScoutWeb.Plug.Logger, application: :api_v2)
+    plug(:accepts, ["json"])
+    plug(CheckApiV2)
+    plug(RateLimit)
+  end
+
+  alias BlockScoutWeb.Account.Api.V1.{AuthenticateController, EmailController, TagsController, UserController}
+  alias BlockScoutWeb.API.V2
 
   scope "/account/v1", as: :account_v1 do
     pipe_through(:api)
     pipe_through(:account_api)
 
+    get("/authenticate", AuthenticateController, :authenticate_get)
+    post("/authenticate", AuthenticateController, :authenticate_post)
+
     get("/get_csrf", UserController, :get_csrf)
+
+    scope "/email" do
+      get("/resend", EmailController, :resend_email)
+    end
 
     scope "/user" do
       get("/info", UserController, :info)
@@ -92,11 +112,14 @@ defmodule BlockScoutWeb.ApiRouter do
     end
   end
 
-  scope "/v2", as: :api_v2 do
-    pipe_through(:api)
-    pipe_through(:api_v2)
+  scope "/v2/import" do
+    pipe_through(:api_v2_no_session)
 
-    alias BlockScoutWeb.API.V2
+    post("/token-info", V2.ImportController, :import_token_info)
+  end
+
+  scope "/v2", as: :api_v2 do
+    pipe_through(:api_v2)
 
     scope "/search" do
       get("/", V2.SearchController, :search)
@@ -105,21 +128,25 @@ defmodule BlockScoutWeb.ApiRouter do
 
     scope "/config" do
       get("/json-rpc-url", V2.ConfigController, :json_rpc_url)
+      get("/backend-version", V2.ConfigController, :backend_version)
     end
 
     scope "/transactions" do
       get("/", V2.TransactionController, :transactions)
+      get("/watchlist", V2.TransactionController, :watchlist_transactions)
       get("/:transaction_hash", V2.TransactionController, :transaction)
       get("/:transaction_hash/token-transfers", V2.TransactionController, :token_transfers)
       get("/:transaction_hash/internal-transactions", V2.TransactionController, :internal_transactions)
       get("/:transaction_hash/logs", V2.TransactionController, :logs)
       get("/:transaction_hash/raw-trace", V2.TransactionController, :raw_trace)
+      get("/:transaction_hash/state-changes", V2.TransactionController, :state_changes)
     end
 
     scope "/blocks" do
       get("/", V2.BlockController, :blocks)
       get("/:block_hash_or_number", V2.BlockController, :block)
       get("/:block_hash_or_number/transactions", V2.BlockController, :transactions)
+      get("/:block_hash_or_number/withdrawals", V2.BlockController, :withdrawals)
     end
 
     scope "/addresses" do
@@ -135,6 +162,7 @@ defmodule BlockScoutWeb.ApiRouter do
       get("/:address_hash/blocks-validated", V2.AddressController, :blocks_validated)
       get("/:address_hash/coin-balance-history", V2.AddressController, :coin_balance_history)
       get("/:address_hash/coin-balance-history-by-day", V2.AddressController, :coin_balance_history_by_day)
+      get("/:address_hash/withdrawals", V2.AddressController, :withdrawals)
     end
 
     scope "/tokens" do
@@ -143,11 +171,17 @@ defmodule BlockScoutWeb.ApiRouter do
       get("/:address_hash/counters", V2.TokenController, :counters)
       get("/:address_hash/transfers", V2.TokenController, :transfers)
       get("/:address_hash/holders", V2.TokenController, :holders)
+      get("/:address_hash/instances", V2.TokenController, :instances)
+      get("/:address_hash/instances/:token_id", V2.TokenController, :instance)
+      get("/:address_hash/instances/:token_id/transfers", V2.TokenController, :transfers_by_instance)
+      get("/:address_hash/instances/:token_id/holders", V2.TokenController, :holders_by_instance)
+      get("/:address_hash/instances/:token_id/transfers-count", V2.TokenController, :transfers_count_by_instance)
     end
 
     scope "/main-page" do
       get("/blocks", V2.MainPageController, :blocks)
       get("/transactions", V2.MainPageController, :transactions)
+      get("/transactions/watchlist", V2.MainPageController, :watchlist_transactions)
       get("/indexing-status", V2.MainPageController, :indexing_status)
     end
 
@@ -159,6 +193,11 @@ defmodule BlockScoutWeb.ApiRouter do
         get("/market", V2.StatsController, :market_chart)
       end
     end
+
+    scope "/withdrawals" do
+      get("/", V2.WithdrawalController, :withdrawals_list)
+      get("/counters", V2.WithdrawalController, :withdrawals_counters)
+    end
   end
 
   scope "/v1", as: :api_v1 do
@@ -169,7 +208,13 @@ defmodule BlockScoutWeb.ApiRouter do
 
     # leave the same endpoint in v1 in order to keep backward compatibility
     get("/search", SearchController, :search)
-    get("/health", HealthController, :health)
+
+    scope "/health" do
+      get("/", HealthController, :health)
+      get("/liveness", HealthController, :liveness)
+      get("/readiness", HealthController, :readiness)
+    end
+
     get("/gas-price-oracle", V1.GasPriceOracleController, :gas_price_oracle)
 
     if Application.compile_env(:block_scout_web, __MODULE__)[:reading_enabled] do
