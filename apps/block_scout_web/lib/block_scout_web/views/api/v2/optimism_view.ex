@@ -8,6 +8,8 @@ defmodule BlockScoutWeb.API.V2.OptimismView do
   alias Explorer.Chain.{Block, Transaction}
   alias Explorer.Chain.Optimism.{DisputeGame, FrameSequence, FrameSequenceBlob, InteropMessage, Withdrawal}
 
+  @api_true [api?: true]
+
   @doc """
     Function to render GET requests to `/api/v2/optimism/txn-batches` endpoint.
   """
@@ -179,7 +181,7 @@ defmodule BlockScoutWeb.API.V2.OptimismView do
         next_page_params: next_page_params,
         conn: conn
       }) do
-    respected_games = Withdrawal.respected_games()
+    respected_games = Withdrawal.respected_games(@api_true)
 
     %{
       items:
@@ -209,7 +211,7 @@ defmodule BlockScoutWeb.API.V2.OptimismView do
               _ -> {nil, nil}
             end
 
-          {status, challenge_period_end} = Withdrawal.status(w, respected_games)
+          {status, challenge_period_end} = Withdrawal.status(w, respected_games, @api_true)
 
           %{
             "msg_nonce_raw" => Decimal.to_string(w.msg_nonce, :normal),
@@ -336,7 +338,7 @@ defmodule BlockScoutWeb.API.V2.OptimismView do
   # includes basic batch information.
   #
   # ## Parameters
-  # - `internal_id`: The internal ID of the batch.
+  # - `number`: The internal ID of the batch.
   # - `l2_block_number_from`: Start L2 block number of the batch block range.
   # - `l2_block_number_to`: End L2 block number of the batch block range.
   # - `transactions_count`: The L2 transaction count included into the blocks of the range.
@@ -361,9 +363,9 @@ defmodule BlockScoutWeb.API.V2.OptimismView do
           :l1_transaction_hashes => list(),
           :batch_data_container => :in_blob4844 | :in_celestia | :in_calldata | nil
         }
-  defp render_base_info_for_batch(internal_id, l2_block_number_from, l2_block_number_to, transactions_count, batch) do
+  defp render_base_info_for_batch(number, l2_block_number_from, l2_block_number_to, transactions_count, batch) do
     FrameSequence.prepare_base_info_for_batch(
-      internal_id,
+      number,
       l2_block_number_from,
       l2_block_number_to,
       transactions_count,

@@ -6,6 +6,7 @@ defmodule Explorer.Chain.InternalTransaction do
   alias Explorer.{Chain, PagingOptions}
   alias Explorer.Chain.{Address, Block, Data, Hash, PendingBlockOperation, Transaction, Wei}
   alias Explorer.Chain.Block.Reader.General, as: BlockReaderGeneral
+  alias Explorer.Chain.Cache.Counters.Helper, as: CacheCountersHelper
   alias Explorer.Chain.DenormalizationHelper
   alias Explorer.Chain.InternalTransaction.{CallType, Type}
 
@@ -580,11 +581,27 @@ defmodule Explorer.Chain.InternalTransaction do
   of internal_transactions
   """
   def where_nonpending_block(query \\ nil) do
-    (query || __MODULE__)
-    |> where(
-      [it],
-      fragment("(SELECT block_hash FROM pending_block_operations WHERE block_hash = ? LIMIT 1) IS NULL", it.block_hash)
-    )
+    estimated_pbo_count = CacheCountersHelper.estimated_count_from("pending_block_operations") || 0
+
+    # NOT EXISTS query practically performs better on smaller tables
+    # while the indexed LEFT JOIN IS NULL query is better for larger tables
+    # The estimated count is used as a heuristic to decide which query to use
+    if estimated_pbo_count < 1_000 do
+      (query || __MODULE__)
+      |> where(
+        [it],
+        fragment("NOT EXISTS (SELECT 1 FROM pending_block_operations WHERE block_hash = ?)", it.block_hash)
+      )
+    else
+      (query || __MODULE__)
+      |> where(
+        [it],
+        fragment(
+          "(SELECT block_hash FROM pending_block_operations WHERE block_hash = ? LIMIT 1) IS NULL",
+          it.block_hash
+        )
+      )
+    end
   end
 
   @doc """
@@ -970,6 +987,7 @@ defmodule Explorer.Chain.InternalTransaction do
         |> where_nonpending_block()
         |> page_internal_transaction(paging_options, %{index_internal_transaction_desc_order: true})
         |> where_internal_transactions_by_transaction_hash(Keyword.get(options, :transaction_hash))
+        |> where_consensus_transactions()
         |> order_by([internal_transaction],
           desc: internal_transaction.block_number,
           desc: internal_transaction.transaction_index,
@@ -990,6 +1008,22 @@ defmodule Explorer.Chain.InternalTransaction do
 
   def internal_transaction_to_block_paging_options(%__MODULE__{block_index: block_index}) do
     %{"block_index" => block_index}
+  end
+
+  defp where_consensus_transactions(query) do
+    if DenormalizationHelper.transactions_denormalization_finished?() do
+      query
+      |> join(:inner, [internal_transaction], transaction in assoc(internal_transaction, :transaction))
+      # todo: this additional check causes performance issues at /api/v2/internal-transactions endpoint
+      # In the future we plan to extract reorg data into separate tables, so the main tables will no longer contain
+      # reorged data, and this check will no longer be necessary..
+      # |> where([internal_transaction, transaction], transaction.block_hash == internal_transaction.block_hash)
+      |> where([_internal_transaction, transaction], transaction.block_consensus == true)
+    else
+      query
+      |> join(:inner, [internal_transaction], block in assoc(internal_transaction, :block))
+      |> where([_internal_transaction, block], block.consensus == true)
+    end
   end
 
   defp where_internal_transactions_by_transaction_hash(query, nil), do: query
