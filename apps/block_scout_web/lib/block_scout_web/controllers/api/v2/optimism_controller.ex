@@ -10,11 +10,6 @@ defmodule BlockScoutWeb.API.V2.OptimismController do
       split_list_by_page: 1
     ]
 
-  import BlockScoutWeb.PagingHelper,
-    only: [
-      delete_parameters_from_next_page_params: 1
-    ]
-
   import Explorer.Helper, only: [hash_to_binary: 1]
 
   alias BlockScoutWeb.API.V2.ApiView
@@ -54,7 +49,7 @@ defmodule BlockScoutWeb.API.V2.OptimismController do
       |> TransactionBatch.list()
       |> split_list_by_page()
 
-    next_page_params = next_page_params(next_page, batches, delete_parameters_from_next_page_params(params))
+    next_page_params = next_page_params(next_page, batches, params)
 
     conn
     |> put_status(200)
@@ -160,13 +155,13 @@ defmodule BlockScoutWeb.API.V2.OptimismController do
   end
 
   @doc """
-    Function to handle GET requests to `/api/v2/optimism/batches/:internal_id` endpoint.
+    Function to handle GET requests to `/api/v2/optimism/batches/:number` endpoint.
   """
-  @spec batch_by_internal_id(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def batch_by_internal_id(conn, %{"internal_id" => internal_id}) do
-    {internal_id, ""} = Integer.parse(internal_id)
+  @spec batch_by_number(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def batch_by_number(conn, %{"number" => number}) do
+    {number, ""} = Integer.parse(number)
 
-    batch = FrameSequence.batch_by_internal_id(internal_id, api?: true)
+    batch = FrameSequence.batch_by_number(number, api?: true)
 
     if is_nil(batch) do
       {:error, :not_found}

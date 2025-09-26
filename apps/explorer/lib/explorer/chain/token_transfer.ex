@@ -140,6 +140,7 @@ defmodule Explorer.Chain.TokenTransfer do
   require Explorer.Chain.TokenTransfer.Schema
 
   import Ecto.Changeset
+  import Explorer.Chain.Address.Reputation, only: [reputation_association: 0]
 
   alias Explorer.Chain
   alias Explorer.Chain.{DenormalizationHelper, Hash, Log, TokenTransfer}
@@ -244,7 +245,7 @@ defmodule Explorer.Chain.TokenTransfer do
         preloads =
           DenormalizationHelper.extend_transaction_preload([
             :transaction,
-            :token,
+            [token: reputation_association()],
             [from_address: [:scam_badge, :names, :smart_contract, Implementation.proxy_implementations_association()]],
             [to_address: [:scam_badge, :names, :smart_contract, Implementation.proxy_implementations_association()]]
           ])
@@ -271,7 +272,7 @@ defmodule Explorer.Chain.TokenTransfer do
         preloads =
           DenormalizationHelper.extend_transaction_preload([
             :transaction,
-            :token,
+            [token: reputation_association()],
             [from_address: [:scam_badge, :names, :smart_contract, Implementation.proxy_implementations_association()]],
             [to_address: [:scam_badge, :names, :smart_contract, Implementation.proxy_implementations_association()]]
           ])
@@ -304,7 +305,7 @@ defmodule Explorer.Chain.TokenTransfer do
         preloads =
           DenormalizationHelper.extend_transaction_preload([
             :transaction,
-            :token,
+            [token: reputation_association()],
             [from_address: [:scam_badge, :names, :smart_contract, Implementation.proxy_implementations_association()]],
             [to_address: [:scam_badge, :names, :smart_contract, Implementation.proxy_implementations_association()]]
           ])

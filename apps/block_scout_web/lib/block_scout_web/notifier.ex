@@ -32,6 +32,7 @@ defmodule BlockScoutWeb.Notifier do
   alias Explorer.Chain.{
     Address,
     Address.CoinBalance,
+    Address.Reputation,
     BlockNumberHelper,
     DenormalizationHelper,
     InternalTransaction,
@@ -65,7 +66,7 @@ defmodule BlockScoutWeb.Notifier do
   case @chain_type do
     :celo ->
       @chain_type_transaction_associations [
-        :gas_token
+        gas_token: Reputation.reputation_association()
       ]
 
     _ ->
@@ -263,7 +264,7 @@ defmodule BlockScoutWeb.Notifier do
       all_token_transfers
       |> Repo.preload(
         DenormalizationHelper.extend_transaction_preload([
-          :token,
+          [token: Reputation.reputation_association()],
           :transaction,
           from_address: [
             :scam_badge,
@@ -305,7 +306,10 @@ defmodule BlockScoutWeb.Notifier do
       to_address: [:scam_badge, :names, :smart_contract, proxy_implementations_association()]
     ]
 
-    preloads = if API_V2.enabled?(), do: [:token_transfers | base_preloads], else: base_preloads
+    preloads =
+      if API_V2.enabled?(),
+        do: [{:token_transfers, [token: Reputation.reputation_association()]} | base_preloads],
+        else: base_preloads
 
     transactions
     |> Repo.preload(preloads)
@@ -396,12 +400,22 @@ defmodule BlockScoutWeb.Notifier do
   end
 
   @current_token_balances_limit 50
-  def handle_event({:chain_event, :address_current_token_balances, :on_demand, address_current_token_balances}) do
-    address_current_token_balances.address_current_token_balances
+  def handle_event(
+        {:chain_event, :address_current_token_balances, type,
+         %{address_current_token_balances: address_current_token_balances, address_hash: address_hash}}
+      )
+      when type in [:realtime, :on_demand] do
+    address_current_token_balances
+    |> Repo.preload(token: Reputation.reputation_association())
     |> Enum.group_by(& &1.token_type)
     |> Enum.each(fn {token_type, balances} ->
-      broadcast_token_balances(address_current_token_balances.address_hash, token_type, balances)
+      broadcast_token_balances(address_hash, token_type, balances)
     end)
+  end
+
+  def handle_event({:chain_event, :address_current_token_balances, :realtime, _empty_balances_params}) do
+    # Don't broadcast empty balances params from realtime block fetcher
+    :ok
   end
 
   case @chain_type do

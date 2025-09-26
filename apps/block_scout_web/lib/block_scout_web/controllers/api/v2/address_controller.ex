@@ -19,7 +19,6 @@ defmodule BlockScoutWeb.API.V2.AddressController do
   import BlockScoutWeb.PagingHelper,
     only: [
       addresses_sorting: 1,
-      delete_parameters_from_next_page_params: 1,
       token_transfers_types_options: 1,
       address_transactions_sorting: 1,
       nft_types_options: 1
@@ -29,11 +28,21 @@ defmodule BlockScoutWeb.API.V2.AddressController do
 
   import Explorer.MicroserviceInterfaces.BENS, only: [maybe_preload_ens: 1, maybe_preload_ens_to_address: 1]
   import Explorer.MicroserviceInterfaces.Metadata, only: [maybe_preload_metadata: 1]
+  import Explorer.Chain.Address.Reputation, only: [reputation_association: 0]
 
   alias BlockScoutWeb.AccessHelper
-  alias BlockScoutWeb.API.V2.{BlockView, TransactionView, WithdrawalView}
+
+  alias BlockScoutWeb.API.V2.{
+    BlockView,
+    Ethereum.DepositController,
+    Ethereum.DepositView,
+    TransactionView,
+    WithdrawalView
+  }
+
+  alias BlockScoutWeb.Schemas.Helper, as: SchemasHelper
   alias Explorer.{Chain, Market, PagingOptions}
-  alias Explorer.Chain.{Address, Hash, InternalTransaction, Transaction}
+  alias Explorer.Chain.{Address, Beacon.Deposit, Hash, InternalTransaction, Transaction}
   alias Explorer.Chain.Address.{CoinBalance, Counters}
 
   alias Explorer.Chain.Token.Instance
@@ -49,7 +58,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
   case @chain_type do
     :celo ->
       @chain_type_transaction_necessity_by_association %{
-        :gas_token => :optional
+        [gas_token: reputation_association()] => :optional
       }
 
     _ ->
@@ -75,7 +84,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
       [from_address: [:scam_badge, :names, :smart_contract, proxy_implementations_association()]] => :optional,
       :block => :optional,
       :transaction => :optional,
-      :token => :optional
+      [token: reputation_association()] => :optional
     },
     api?: true
   ]
@@ -84,16 +93,16 @@ defmodule BlockScoutWeb.API.V2.AddressController do
     necessity_by_association: %{
       :names => :optional,
       :scam_badge => :optional,
-      :token => :optional,
       :signed_authorization => :optional,
-      :smart_contract => :optional
+      :smart_contract => :optional,
+      [token: reputation_association()] => :optional
     },
     api?: true
   ]
 
   @nft_necessity_by_association [
     necessity_by_association: %{
-      :token => :optional
+      [token: reputation_association()] => :optional
     }
   ]
 
@@ -118,6 +127,12 @@ defmodule BlockScoutWeb.API.V2.AddressController do
       [epoch: [:end_processing_block]] => :optional
     },
     api?: true
+  ]
+
+  @token_preload_options [
+    necessity_by_association: %{
+      [token: reputation_association()] => :optional
+    }
   ]
 
   @spec contract_address_preloads() :: [keyword()]
@@ -285,7 +300,11 @@ defmodule BlockScoutWeb.API.V2.AddressController do
         {:ok, _address} ->
           token_balances =
             address_hash
-            |> Chain.fetch_last_token_balances(@api_true |> fetch_scam_token_toggle(conn))
+            |> Chain.fetch_last_token_balances(
+              @api_true
+              |> fetch_scam_token_toggle(conn)
+              |> Keyword.merge(@token_preload_options)
+            )
 
           TokenBalanceOnDemand.trigger_fetch(ip, address_hash)
 
@@ -374,7 +393,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
             next_page
             |> next_page_params(
               transactions,
-              delete_parameters_from_next_page_params(params),
+              params,
               &Transaction.address_transactions_next_page_params/1
             )
 
@@ -476,7 +495,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
 
           next_page_params =
             next_page
-            |> token_transfers_next_page_params(token_transfers, delete_parameters_from_next_page_params(params))
+            |> token_transfers_next_page_params(token_transfers, params)
 
           conn
           |> put_status(200)
@@ -561,7 +580,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
           {internal_transactions, next_page} = split_list_by_page(results_plus_one)
 
           next_page_params =
-            next_page |> next_page_params(internal_transactions, delete_parameters_from_next_page_params(params))
+            next_page |> next_page_params(internal_transactions, params)
 
           conn
           |> put_status(200)
@@ -636,7 +655,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
 
           {logs, next_page} = split_list_by_page(results_plus_one)
 
-          next_page_params = next_page |> next_page_params(logs, delete_parameters_from_next_page_params(params))
+          next_page_params = next_page |> next_page_params(logs, params)
 
           conn
           |> put_status(200)
@@ -710,7 +729,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
           results_plus_one = Chain.get_blocks_validated_by_address(full_options, address_hash)
           {blocks, next_page} = split_list_by_page(results_plus_one)
 
-          next_page_params = next_page |> next_page_params(blocks, delete_parameters_from_next_page_params(params))
+          next_page_params = next_page |> next_page_params(blocks, params)
 
           conn
           |> put_status(200)
@@ -769,7 +788,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
           {coin_balances, next_page} = split_list_by_page(results_plus_one)
 
           next_page_params =
-            next_page |> next_page_params(coin_balances, delete_parameters_from_next_page_params(params))
+            next_page |> next_page_params(coin_balances, params)
 
           conn
           |> put_status(200)
@@ -798,7 +817,8 @@ defmodule BlockScoutWeb.API.V2.AddressController do
              days: %Schema{type: :integer, nullable: false},
              items: %Schema{type: :array, items: Schemas.CoinBalanceByDay}
            },
-           nullable: false
+           nullable: false,
+           additionalProperties: false
          }},
       unprocessable_entity: JsonErrorResponse.response(),
       forbidden: ForbiddenResponse.response()
@@ -893,6 +913,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
               |> paging_options()
               |> Keyword.merge(token_transfers_types_options(params))
               |> Keyword.merge(@api_true)
+              |> Keyword.merge(@token_preload_options)
               |> fetch_scam_token_toggle(conn)
             )
 
@@ -904,7 +925,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
             next_page
             |> next_page_params(
               tokens,
-              delete_parameters_from_next_page_params(params),
+              params,
               &paging_params_with_fiat_value/1
             )
 
@@ -961,7 +982,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
           withdrawals_plus_one = address_hash |> Chain.address_hash_to_withdrawals(options)
           {withdrawals, next_page} = split_list_by_page(withdrawals_plus_one)
 
-          next_page_params = next_page |> next_page_params(withdrawals, delete_parameters_from_next_page_params(params))
+          next_page_params = next_page |> next_page_params(withdrawals, params)
 
           conn
           |> put_status(200)
@@ -993,28 +1014,39 @@ defmodule BlockScoutWeb.API.V2.AddressController do
     responses: [
       ok:
         {"List of native coin holders with their balances, with pagination.", "application/json",
-         %Schema{
-           title: "AddressesList",
-           allOf: [
-             paginated_response(
-               items: Schemas.Address,
-               next_page_params_example: %{
-                 "fetched_coin_balance" => "124355417998347240251800",
-                 "hash" => "0x59708733fbbf64378d9293ec56b977c011a08fd2",
-                 "items_count" => 50,
-                 "transactions_count" => nil
-               },
-               title_prefix: "AddressList"
-             ),
-             %Schema{
-               properties: %{
-                 exchange_rate: Schemas.General.FloatStringNullable,
-                 total_supply: Schemas.General.FloatStringNullable
-               },
-               required: [:exchange_rate, :total_supply]
-             }
-           ]
-         }},
+         SchemasHelper.extend_schema(
+           paginated_response(
+             items:
+               Schemas.Address.schema()
+               |> SchemasHelper.extend_schema(
+                 title: "AddressWithCoinBalanceAndTransactionsCount",
+                 properties: %{
+                   coin_balance: Schemas.General.IntegerStringNullable,
+                   transactions_count: %Schema{
+                     anyOf: [
+                       Schemas.General.IntegerString,
+                       # TODO: replace empty string with null?
+                       Schemas.General.EmptyString
+                     ],
+                     nullable: true
+                   }
+                 },
+                 required: [:coin_balance, :transactions_count]
+               ),
+             next_page_params_example: %{
+               "fetched_coin_balance" => "124355417998347240251800",
+               "hash" => "0x59708733fbbf64378d9293ec56b977c011a08fd2",
+               "items_count" => 50,
+               "transactions_count" => nil
+             },
+             title_prefix: "AddressList"
+           ),
+           properties: %{
+             exchange_rate: Schemas.General.FloatStringNullable,
+             total_supply: Schemas.General.FloatStringNullable
+           },
+           required: [:exchange_rate, :total_supply]
+         )},
       forbidden: ForbiddenResponse.response()
     ]
 
@@ -1040,7 +1072,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
       |> Address.list_top_addresses()
       |> split_list_by_page()
 
-    next_page_params = next_page_params(next_page, addresses, delete_parameters_from_next_page_params(params))
+    next_page_params = next_page_params(next_page, addresses, params)
 
     exchange_rate = Market.get_coin_exchange_rate()
     total_supply = Chain.total_supply()
@@ -1090,7 +1122,8 @@ defmodule BlockScoutWeb.API.V2.AddressController do
         logs: :logs_count,
         withdrawals: :withdrawals_count,
         internal_transactions: :internal_transactions_count,
-        celo_election_rewards: :celo_election_rewards_count
+        celo_election_rewards: :celo_election_rewards_count,
+        beacon_deposits: :beacon_deposits_count
       }
 
       case Chain.hash_to_address(address_hash, @address_options) do
@@ -1190,7 +1223,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
             next_page
             |> next_page_params(
               nfts,
-              delete_parameters_from_next_page_params(params),
+              params,
               &Instance.nft_list_next_page_params/1
             )
 
@@ -1266,7 +1299,7 @@ defmodule BlockScoutWeb.API.V2.AddressController do
             next_page
             |> next_page_params(
               collections,
-              delete_parameters_from_next_page_params(params),
+              params,
               &Instance.nft_collections_next_page_params/1
             )
 
@@ -1288,17 +1321,18 @@ defmodule BlockScoutWeb.API.V2.AddressController do
     parameters:
       base_params() ++
         [address_hash_param()] ++
-        define_paging_params(["epoch_number", "amount", "associated_account_address_hash", "type"]),
+        define_paging_params(["items_count", "epoch_number", "amount", "associated_account_address_hash", "type"]),
     responses: [
       ok:
         {"Celo election rewards for the specified address.", "application/json",
          paginated_response(
            items: Schemas.Celo.ElectionReward,
            next_page_params_example: %{
-             "block_number" => 100,
+             "epoch_number" => 100,
              "amount" => "1000000000000000000",
              "associated_account_address_hash" => "0x1234567890123456789012345678901234567890",
-             "type" => "validator"
+             "type" => "validator",
+             "items_count" => 50
            },
            title_prefix: "AddressCeloElectionRewards"
          )},
@@ -1326,7 +1360,6 @@ defmodule BlockScoutWeb.API.V2.AddressController do
 
       filtered_params =
         params
-        |> delete_parameters_from_next_page_params()
         |> Map.drop([
           "epoch_number",
           "amount",
@@ -1373,7 +1406,12 @@ defmodule BlockScoutWeb.API.V2.AddressController do
          {amount, ""} <- Decimal.parse(amount_string),
          {:ok, associated_account_address_hash} <-
            Hash.Address.cast(associated_account_address_hash_string),
-         {:ok, type} <- CeloElectionReward.type_from_string(type_string) do
+         sanitized_type_string <-
+           type_string
+           |> String.trim()
+           |> String.downcase()
+           |> String.replace("-", "_"),
+         {:ok, type} <- CeloElectionReward.type_from_string(sanitized_type_string) do
       %{
         PagingOptions.default_paging_options()
         | key: %{
@@ -1386,6 +1424,87 @@ defmodule BlockScoutWeb.API.V2.AddressController do
     else
       _ ->
         PagingOptions.default_paging_options()
+    end
+  end
+
+  operation :beacon_deposits,
+    summary: "List Beacon Deposits for a specific address",
+    description: "Retrieves Beacon deposits for a specific address.",
+    parameters:
+      base_params() ++
+        [address_hash_param()] ++
+        define_paging_params(["deposit_index", "items_count"]),
+    responses: [
+      ok:
+        {"Beacon deposits for the specified address.", "application/json",
+         paginated_response(
+           items: Schemas.Beacon.Deposit,
+           next_page_params_example: %{
+             "index" => 123,
+             "items_count" => 50
+           },
+           title_prefix: "AddressBeaconDeposits"
+         )},
+      unprocessable_entity: JsonErrorResponse.response(),
+      forbidden: ForbiddenResponse.response()
+    ]
+
+  @doc """
+  Handles `api/v2/addresses/:address_hash/beacon/deposits` endpoint.
+  Fetches beacon deposits for a given address with pagination support.
+
+  This endpoint retrieves all beacon deposits originating from the specified
+  address. The results include preloaded associations for both the from_address
+  and withdrawal_address, including scam badges, names, smart contracts, and
+  proxy implementations. The response is paginated and may include ENS and
+  metadata enrichment if those services are enabled.
+
+  ## Parameters
+  - `conn`: The Plug connection.
+  - `params`: A map containing:
+    - `address_hash_param`: The address hash string to fetch deposits for.
+    - Optional pagination parameter:
+      - `index`: non-negative integer, the starting index for pagination.
+
+  ## Returns
+  - `{:format, :error}` - If the address hash format is invalid.
+  - `{:restricted_access, true}` - If the address is restricted from access.
+  - `Plug.Conn.t()` - A 200 response with rendered deposits and pagination
+    information when successful.
+  """
+  @spec beacon_deposits(Plug.Conn.t(), map()) ::
+          {:format, :error} | {:restricted_access, true} | Plug.Conn.t()
+  def beacon_deposits(conn, %{address_hash_param: address_hash_param} = params) do
+    with {:ok, address_hash} <- validate_address_hash(address_hash_param, params) do
+      full_options =
+        [
+          necessity_by_association: %{
+            [from_address: [:scam_badge, :names, :smart_contract, proxy_implementations_association()]] => :optional,
+            [withdrawal_address: [:scam_badge, :names, :smart_contract, proxy_implementations_association()]] =>
+              :optional
+          },
+          api?: true
+        ]
+        |> Keyword.merge(DepositController.paging_options(params))
+
+      deposit_plus_one = Deposit.from_address_hash(address_hash, full_options)
+      {deposits, next_page} = split_list_by_page(deposit_plus_one)
+
+      next_page_params =
+        next_page
+        |> next_page_params(
+          deposits,
+          params,
+          DepositController.paging_function()
+        )
+
+      conn
+      |> put_status(200)
+      |> put_view(DepositView)
+      |> render(:deposits, %{
+        deposits: deposits |> maybe_preload_ens() |> maybe_preload_metadata(),
+        next_page_params: next_page_params
+      })
     end
   end
 

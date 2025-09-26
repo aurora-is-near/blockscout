@@ -10,7 +10,18 @@ defmodule Explorer.Chain.AdvancedFilter do
 
   alias Explorer.Helper, as: ExplorerHelper
   alias Explorer.{Chain, Helper, PagingOptions}
-  alias Explorer.Chain.{Address, Data, DenormalizationHelper, Hash, InternalTransaction, TokenTransfer, Transaction}
+
+  alias Explorer.Chain.{
+    Address,
+    Address.Reputation,
+    Data,
+    DenormalizationHelper,
+    Hash,
+    InternalTransaction,
+    TokenTransfer,
+    Transaction
+  }
+
   alias Explorer.Chain.Block.Reader.General, as: BlockGeneralReader
 
   @primary_key false
@@ -509,7 +520,7 @@ defmodule Explorer.Chain.AdvancedFilter do
     |> limit_query(paging_options)
     |> query_function.(false)
     |> limit_query(paging_options)
-    |> preload([:transaction, :token])
+    |> preload([:transaction, [token: ^Reputation.reputation_association()]])
     |> select_merge([token_transfer], %{token_ids: [token_transfer.token_id], amounts: [token_transfer.amount]})
   end
 
