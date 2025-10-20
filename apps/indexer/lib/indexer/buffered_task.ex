@@ -557,13 +557,16 @@ defmodule Indexer.BufferedTask do
 
     ## Parameters
     - `server`: The name or PID of the BufferedTask process.
+    - `current_front_buffer?`: If `true`, includes entries in the front buffer
+      in the total count; if `false`, only includes entries in the regular buffer
+      and the processing queue.
 
     ## Returns
     A map with keys `:buffer` (total entries count) and `:tasks` (active tasks count).
   """
-  @spec debug_count(GenServer.name()) :: %{buffer: non_neg_integer(), tasks: non_neg_integer()}
-  def debug_count(server) do
-    GenServer.call(server, :debug_count)
+  @spec debug_count(GenServer.name(), boolean()) :: %{buffer: non_neg_integer(), tasks: non_neg_integer()}
+  def debug_count(server, current_front_buffer? \\ true) do
+    GenServer.call(server, {:debug_count, current_front_buffer?})
   end
 
   @doc """
@@ -693,6 +696,13 @@ defmodule Indexer.BufferedTask do
     {:noreply, flush(state)}
   end
 
+  # Handles graceful shutdown. A fetcher implementing BufferedTask behaviour
+  # can invoke `Process.send(__MODULE__, :shutdown, [])` to shutdown itself.
+  # Its `restart` configuration must be set to `:transient`.
+  def handle_info(:shutdown, state) do
+    {:stop, :shutdown, state}
+  end
+
   # Handles the successful completion of the initial streaming task.
   def handle_info({ref, :ok}, %__MODULE__{init_task: ref} = state) do
     {:noreply, state}
@@ -716,6 +726,7 @@ defmodule Indexer.BufferedTask do
   # is added back to the queue and processing of the next batch is triggered.
   # Useful when all data from the batch needs to be reprocessed.
   def handle_info({ref, :retry}, state) do
+    Logger.debug("Retrying batch with ref #{inspect(ref)}")
     {:noreply, drop_task_and_retry(state, ref)}
   end
 
@@ -724,6 +735,7 @@ defmodule Indexer.BufferedTask do
   # the next batch is triggered. Useful when only part of the original batch
   # needs to be reprocessed.
   def handle_info({ref, {:retry, retryable_entries}}, state) do
+    Logger.debug("Retrying batch with ref #{inspect(ref)} and specific entries #{inspect(retryable_entries)}")
     {:noreply, drop_task_and_retry(state, ref, retryable_entries)}
   end
 
@@ -734,6 +746,8 @@ defmodule Indexer.BufferedTask do
   # If all entries are needed to be retried, the `retryable_entries` should
   # be `nil`.
   def handle_info({ref, {:retry, retryable_entries, new_callback_module_state}}, state) do
+    Logger.debug("Retrying batch with ref #{inspect(ref)} and specific entries #{inspect(retryable_entries)}")
+
     {:noreply,
      drop_task_and_retry(%__MODULE__{state | callback_module_state: new_callback_module_state}, ref, retryable_entries)}
   end
@@ -751,6 +765,7 @@ defmodule Indexer.BufferedTask do
   # Handles abnormal termination of a task processing queue data. The task's batch
   # is re-added to the queue and processing of the next batch is triggered.
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+    Logger.debug("Task crashed, retrying batch with ref #{inspect(ref)}")
     {:noreply, drop_task_and_retry(state, ref)}
   end
 
@@ -772,7 +787,7 @@ defmodule Indexer.BufferedTask do
   # Returns a count of entries in buffers and queue, and the number of active tasks.
   # This is useful for monitoring and debugging the BufferedTask's internal state.
   def handle_call(
-        :debug_count,
+        {:debug_count, current_front_buffer?},
         _from,
         %__MODULE__{
           current_buffer: current_buffer,
@@ -782,7 +797,14 @@ defmodule Indexer.BufferedTask do
           task_ref_to_batch: task_ref_to_batch
         } = state
       ) do
-    count = length(current_buffer) + length(current_front_buffer) + Enum.count(bound_queue) * max_batch_size
+    current_front_buffer_count =
+      if current_front_buffer? do
+        length(current_front_buffer)
+      else
+        0
+      end
+
+    count = length(current_buffer) + current_front_buffer_count + Enum.count(bound_queue) * max_batch_size
 
     {:reply, %{buffer: count, tasks: Enum.count(task_ref_to_batch)}, state}
   end
