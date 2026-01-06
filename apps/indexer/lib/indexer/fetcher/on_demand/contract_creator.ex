@@ -13,7 +13,7 @@ defmodule Indexer.Fetcher.OnDemand.ContractCreator do
   alias EthereumJSONRPC.Nonce
   alias Explorer.Chain.Address
   alias Explorer.Chain.Cache.BlockNumber
-  alias Explorer.Utility.MissingRangesManipulator
+  alias Explorer.Utility.MissingBlockRange
 
   import Indexer.Block.Fetcher,
     only: [
@@ -98,7 +98,9 @@ defmodule Indexer.Fetcher.OnDemand.ContractCreator do
     :ets.insert(@table_name, {@pending_blocks_cache_key, updated_pending_blocks})
 
     # Change `1` to specific label when `priority` field becomes `Ecto.Enum`.
-    MissingRangesManipulator.add_ranges_by_block_numbers([contract_creation_block_number], 1)
+    MissingBlockRange.add_ranges_by_block_numbers([contract_creation_block_number], 1)
+
+    :ok
   end
 
   defp find_contract_creation_block_number(block_ranges, address_hash) do
@@ -199,7 +201,7 @@ defmodule Indexer.Fetcher.OnDemand.ContractCreator do
         |> Map.get(:blocks, [])
         |> Enum.map(&Map.get(&1, :number))
 
-      unless Enum.empty?(imported_block_numbers) do
+      if !Enum.empty?(imported_block_numbers) do
         cache_key = @pending_blocks_cache_key
         # credo:disable-for-next-line Credo.Check.Refactor.Nesting
         case pending_blocks_cache() do
