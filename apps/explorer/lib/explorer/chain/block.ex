@@ -5,7 +5,9 @@ defmodule Explorer.Chain.Block.Schema do
     Changes in the schema should be reflected in the bulk import module:
     - Explorer.Chain.Import.Runner.Blocks
   """
-  use Utils.CompileTimeEnvHelper, chain_type: [:explorer, :chain_type]
+  use Utils.CompileTimeEnvHelper,
+    chain_type: [:explorer, :chain_type],
+    chain_identity: [:explorer, :chain_identity]
 
   alias Explorer.Chain.{
     Address,
@@ -25,6 +27,7 @@ defmodule Explorer.Chain.Block.Schema do
   alias Explorer.Chain.Optimism.TransactionBatch, as: OptimismTransactionBatch
   alias Explorer.Chain.Zilliqa.AggregateQuorumCertificate, as: ZilliqaAggregateQuorumCertificate
   alias Explorer.Chain.Zilliqa.QuorumCertificate, as: ZilliqaQuorumCertificate
+  alias Explorer.Chain.Zilliqa.Zrc2.TokenTransfer, as: Zrc2TokenTransfer
   alias Explorer.Chain.ZkSync.BatchBlock, as: ZkSyncBatchBlock
 
   @chain_type_fields (case @chain_type do
@@ -75,22 +78,6 @@ defmodule Explorer.Chain.Block.Schema do
                             2
                           )
 
-                        :celo ->
-                          elem(
-                            quote do
-                              has_one(:celo_initiated_epoch, CeloEpoch,
-                                foreign_key: :start_processing_block_hash,
-                                references: :hash
-                              )
-
-                              has_one(:celo_terminated_epoch, CeloEpoch,
-                                foreign_key: :end_processing_block_hash,
-                                references: :hash
-                              )
-                            end,
-                            2
-                          )
-
                         :arbitrum ->
                           elem(
                             quote do
@@ -130,6 +117,11 @@ defmodule Explorer.Chain.Block.Schema do
                                 foreign_key: :block_hash,
                                 references: :hash
                               )
+
+                              has_many(:zilliqa_zrc2_token_transfers, Zrc2TokenTransfer,
+                                foreign_key: :block_hash,
+                                references: :hash
+                              )
                             end,
                             2
                           )
@@ -137,6 +129,27 @@ defmodule Explorer.Chain.Block.Schema do
                         _ ->
                           []
                       end)
+
+  @chain_identity_fields (case @chain_identity do
+                            {:optimism, :celo} ->
+                              elem(
+                                quote do
+                                  has_one(:celo_initiated_epoch, CeloEpoch,
+                                    foreign_key: :start_processing_block_hash,
+                                    references: :hash
+                                  )
+
+                                  has_one(:celo_terminated_epoch, CeloEpoch,
+                                    foreign_key: :end_processing_block_hash,
+                                    references: :hash
+                                  )
+                                end,
+                                2
+                              )
+
+                            _ ->
+                              []
+                          end)
 
   defmacro generate do
     quote do
@@ -186,6 +199,7 @@ defmodule Explorer.Chain.Block.Schema do
         has_one(:pending_operations, PendingBlockOperation, foreign_key: :block_hash, references: :hash)
 
         unquote_splicing(@chain_type_fields)
+        unquote_splicing(@chain_identity_fields)
       end
     end
   end
@@ -206,7 +220,7 @@ defmodule Explorer.Chain.Block do
   alias Explorer.Chain.{Block, Hash, Transaction, Wei}
   alias Explorer.Chain.Block.{EmissionReward, Reward}
   alias Explorer.{Helper, Repo}
-  alias Explorer.Utility.MissingRangesManipulator
+  alias Explorer.Utility.MissingBlockRange
 
   @optional_attrs ~w(size refetch_needed total_difficulty difficulty base_fee_per_gas)a
 
@@ -471,7 +485,8 @@ defmodule Explorer.Chain.Block do
          # credo:disable-for-next-line Credo.Check.Design.AliasUsage
          config = Explorer.Chain.Optimism.EIP1559ConfigUpdate.actual_config_for_block(block_number),
          false <- is_nil(config) do
-      config
+      {denominator, multiplier, _min_base_fee} = config
+      {denominator, multiplier}
     else
       _ ->
         {Application.get_env(:explorer, :base_fee_max_change_denominator),
@@ -603,7 +618,9 @@ defmodule Explorer.Chain.Block do
         set: [refetch_needed: true, updated_at: Timex.now()]
       )
 
-    MissingRangesManipulator.add_ranges_by_block_numbers(updated_numbers)
+    MissingBlockRange.add_ranges_by_block_numbers(updated_numbers)
+
+    :ok
   end
 
   def set_refetch_needed(block_number), do: set_refetch_needed([block_number])
@@ -668,6 +685,22 @@ defmodule Explorer.Chain.Block do
   end
 
   def aggregate_transactions(block), do: block
+
+  @doc """
+  Checks if block with consensus and not marked to re-fetch block is present in the DB with the given number
+  """
+  @spec indexed?(non_neg_integer()) :: boolean()
+  def indexed?(block_number) do
+    query =
+      from(
+        block in __MODULE__,
+        where: block.number == ^block_number,
+        where: block.consensus == true,
+        where: block.refetch_needed == false
+      )
+
+    Repo.exists?(query)
+  end
 
   defp transaction_aggregator(transaction, acc, block_base_fee_per_gas) do
     gas_used = Helper.number_to_decimal(transaction.gas_used)

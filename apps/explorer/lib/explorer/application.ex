@@ -36,12 +36,14 @@ defmodule Explorer.Application do
 
   alias Explorer.Market.MarketHistoryCache
   alias Explorer.MicroserviceInterfaces.MultichainSearch
+  alias Explorer.Prometheus.Instrumenter
   alias Explorer.Repo.PrometheusLogger
   alias Explorer.Utility.Hammer
 
   @impl Application
   def start(_type, _args) do
     PrometheusLogger.setup()
+    Instrumenter.setup()
 
     :telemetry.attach(
       "prometheus-ecto",
@@ -56,7 +58,9 @@ defmodule Explorer.Application do
       Explorer.Repo.Replica1,
       Explorer.Vault,
       Supervisor.child_spec({SpandexDatadog.ApiServer, datadog_opts()}, id: SpandexDatadog.ApiServer),
-      Supervisor.child_spec({Task.Supervisor, name: Explorer.HistoryTaskSupervisor}, id: Explorer.HistoryTaskSupervisor),
+      Supervisor.child_spec({Task.Supervisor, name: Explorer.HistoryTaskSupervisor},
+        id: Explorer.HistoryTaskSupervisor
+      ),
       Supervisor.child_spec({Task.Supervisor, name: Explorer.MarketTaskSupervisor}, id: Explorer.MarketTaskSupervisor),
       Supervisor.child_spec({Task.Supervisor, name: Explorer.GenesisDataTaskSupervisor}, id: GenesisDataTaskSupervisor),
       Supervisor.child_spec({Task.Supervisor, name: Explorer.TaskSupervisor}, id: Explorer.TaskSupervisor),
@@ -89,7 +93,6 @@ defmodule Explorer.Application do
       con_cache_child_spec(MarketHistoryCache.cache_name()),
       con_cache_child_spec(RSK.cache_name(), ttl_check_interval: :timer.minutes(1), global_ttl: :timer.minutes(30)),
       {Redix, redix_opts()},
-      {Explorer.Utility.MissingRangesManipulator, []},
       {Explorer.Utility.ReplicaAccessibilityManager, []},
       :hackney_pool.child_spec(:default,
         recv_timeout: 60_000,
@@ -103,7 +106,7 @@ defmodule Explorer.Application do
     opts = [strategy: :one_for_one, name: Explorer.Supervisor, max_restarts: 1_000]
 
     if Application.get_env(:nft_media_handler, :standalone_media_worker?) do
-      Supervisor.start_link([], opts)
+      Supervisor.start_link([libcluster()] |> List.flatten(), opts)
     else
       Supervisor.start_link(children, opts)
     end
@@ -115,6 +118,7 @@ defmodule Explorer.Application do
         configure_mode_dependent_process(Explorer.Market.Fetcher.Coin, :api),
         configure_mode_dependent_process(Explorer.Market.Fetcher.Token, :indexer),
         configure_mode_dependent_process(Explorer.Market.Fetcher.History, :indexer),
+        configure_mode_dependent_process(Explorer.Market, :api),
         configure(Explorer.ChainSpec.GenesisData),
         configure(Explorer.Chain.Cache.Counters.ContractsCount),
         configure(Explorer.Chain.Cache.Counters.NewContractsCount),
@@ -163,6 +167,7 @@ defmodule Explorer.Application do
         configure_mode_dependent_process(Explorer.Migrator.SmartContractLanguage, :indexer),
         configure_mode_dependent_process(Explorer.Migrator.CeloL2Epochs, :indexer),
         configure_mode_dependent_process(Explorer.Migrator.CeloAccounts, :indexer),
+        configure_mode_dependent_process(Explorer.Migrator.CeloAggregatedElectionRewards, :indexer),
         configure_mode_dependent_process(Explorer.Migrator.SanitizeErc1155TokenBalancesWithoutTokenIds, :indexer),
         Explorer.Migrator.BackfillMultichainSearchDB
         |> configure_mode_dependent_process(:indexer)
@@ -314,11 +319,17 @@ defmodule Explorer.Application do
           Explorer.Migrator.HeavyDbIndexOperation.CreateTransactionsOperatorFeeConstantIndex,
           :indexer
         ),
+        configure_mode_dependent_process(
+          Explorer.Migrator.HeavyDbIndexOperation.DropTokenInstancesTokenIdIndex,
+          :indexer
+        ),
         Explorer.Migrator.RefetchContractCodes |> configure() |> configure_chain_type_dependent_process(:zksync),
         configure(Explorer.Chain.Fetcher.AddressesBlacklist),
         Explorer.Migrator.SwitchPendingOperations,
         configure_mode_dependent_process(Explorer.Utility.RateLimiter, :api),
-        Hammer.child_for_supervisor() |> configure_mode_dependent_process(:api)
+        Hammer.child_for_supervisor() |> configure_mode_dependent_process(:api),
+        # keep at the end
+        configure_libcluster()
       ]
       |> List.flatten()
 
@@ -421,7 +432,7 @@ defmodule Explorer.Application do
   end
 
   defp configure_mode_dependent_process(process, mode) do
-    if should_start?(process) and Application.get_env(:explorer, :mode) in [mode, :all] do
+    if should_start?(process) and Explorer.mode() in [mode, :all] do
       process
     else
       []
@@ -487,4 +498,15 @@ defmodule Explorer.Application do
   defp redix_opts do
     {System.get_env("ACCOUNT_REDIS_URL") || "redis://127.0.0.1:6379", [name: :redix]}
   end
+
+  defp configure_libcluster do
+    if Explorer.mode() in [:indexer, :api] do
+      libcluster()
+    else
+      []
+    end
+  end
+
+  defp libcluster,
+    do: {Cluster.Supervisor, [Application.get_env(:libcluster, :topologies), [name: Explorer.ClusterSupervisor]]}
 end

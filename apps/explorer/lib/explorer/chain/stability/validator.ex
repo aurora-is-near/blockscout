@@ -5,9 +5,9 @@ defmodule Explorer.Chain.Stability.Validator do
 
   use Explorer.Schema
 
+  alias Explorer.{Chain, Repo, SortingHelper}
   alias Explorer.Chain.{Address, Block, Import}
   alias Explorer.Chain.Hash.Address, as: HashAddress
-  alias Explorer.{Chain, Repo, SortingHelper}
   alias Explorer.SmartContract.Reader
 
   require Logger
@@ -157,7 +157,9 @@ defmodule Explorer.Chain.Stability.Validator do
       result =
         case format_missing_blocks_result(response) do
           {:error, message} ->
-            Logger.warning(fn -> ["Error on getValidatorMissingBlocks for #{validators_address_hashes}: #{message}"] end)
+            Logger.warning(fn ->
+              ["Error on getValidatorMissingBlocks for #{address_hash}: #{message}"]
+            end)
 
             nil
 
@@ -197,7 +199,7 @@ defmodule Explorer.Chain.Stability.Validator do
     Delete validators by address hashes
   """
   @spec delete_validators_by_address_hashes([binary() | HashAddress.t()]) :: {non_neg_integer(), nil | []} | :ignore
-  def delete_validators_by_address_hashes(list) when is_list(list) and length(list) > 0 do
+  def delete_validators_by_address_hashes(list) when is_list(list) and list !== [] do
     __MODULE__
     |> where([vs], vs.address_hash in ^list)
     |> Repo.delete_all()

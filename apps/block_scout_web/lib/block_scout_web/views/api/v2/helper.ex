@@ -5,7 +5,7 @@ defmodule BlockScoutWeb.API.V2.Helper do
   use Utils.CompileTimeEnvHelper, chain_type: [:explorer, :chain_type]
 
   alias Ecto.Association.NotLoaded
-  alias Explorer.Chain.{Address, SmartContract}
+  alias Explorer.Chain.{Address, Address.Reputation, SmartContract}
   alias Explorer.Chain.SmartContract.Proxy
   alias Explorer.Chain.Transaction.History.TransactionStats
 
@@ -82,7 +82,7 @@ defmodule BlockScoutWeb.API.V2.Helper do
       "is_contract" => smart_contract?,
       "name" => address_name(address),
       "is_scam" => address_marked_as_scam?(address),
-      "reputation" => (address_marked_as_scam?(address) && "scam") || "ok",
+      "reputation" => (address_marked_as_scam?(address) && "scam") || address_reputation_if_loaded(address),
       "proxy_type" => proxy_implementations && proxy_implementations.proxy_type,
       "implementations" => Proxy.proxy_object_info(proxy_implementations),
       "is_verified" => smart_contract_verified?(address) || verified_as_proxy?(proxy_implementations),
@@ -120,6 +120,14 @@ defmodule BlockScoutWeb.API.V2.Helper do
       "ens_domain_name" => nil,
       "metadata" => nil
     }
+  end
+
+  defp address_reputation_if_loaded(%Address{reputation: %Reputation{reputation: reputation}}) do
+    reputation
+  end
+
+  defp address_reputation_if_loaded(_) do
+    "ok"
   end
 
   case @chain_type do
@@ -185,9 +193,22 @@ defmodule BlockScoutWeb.API.V2.Helper do
   def smart_contract_verified?(%Address{smart_contract: %NotLoaded{}}), do: nil
   def smart_contract_verified?(%Address{smart_contract: %SmartContract{}}), do: true
 
-  def market_cap(:standard, %{available_supply: available_supply, fiat_value: fiat_value, market_cap: market_cap})
+  def market_cap(:standard, %{
+        available_supply: available_supply,
+        fiat_value: fiat_value,
+        market_cap: %Decimal{} = market_cap
+      })
       when is_nil(available_supply) or is_nil(fiat_value) do
-    max(Decimal.new(0), market_cap)
+    Decimal.max(Decimal.new(0), market_cap)
+  end
+
+  def market_cap(:standard, %{
+        available_supply: available_supply,
+        fiat_value: fiat_value,
+        market_cap: nil
+      })
+      when is_nil(available_supply) or is_nil(fiat_value) do
+    Decimal.new(0)
   end
 
   def market_cap(:standard, %{available_supply: available_supply, fiat_value: fiat_value}) do
@@ -200,7 +221,7 @@ defmodule BlockScoutWeb.API.V2.Helper do
 
   def get_transaction_stats do
     stats_scale = date_range(1)
-    transaction_stats = TransactionStats.by_date_range(stats_scale.earliest, stats_scale.latest)
+    transaction_stats = TransactionStats.by_date_range(stats_scale.earliest, stats_scale.latest, api?: true)
 
     # Need datapoint for legend if none currently available.
     if Enum.empty?(transaction_stats) do
